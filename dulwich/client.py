@@ -45,6 +45,7 @@ import select
 import socket
 import subprocess
 import sys
+import base64
 
 try:
     import urllib2
@@ -986,7 +987,13 @@ class HttpGitClient(GitClient):
         return urlparse.urljoin(self.base_url, path).rstrip("/") + "/"
 
     def _http_request(self, url, headers={}, data=None):
+        parsed = urlparse.urlparse(url)
+        if parsed.username is not None:
+            url = url.replace('{0}:{1}@'.format(parsed.username, parsed.password), '')
+
         req = urllib2.Request(url, headers=headers, data=data)
+        if parsed.username is not None:
+            req.add_header('Authorization', b'Basic ' + base64.b64encode(parsed.username.encode() + b':' + parsed.password.encode()))
         try:
             resp = self.opener.open(req)
         except urllib2.HTTPError as e:
@@ -1176,6 +1183,8 @@ def get_transport_and_path(location, **kwargs):
     :return: Tuple with client instance and relative path.
     """
     # First, try to parse it as a URL
+    if isinstance(location, bytes):
+        location = location.decode()
     try:
         return get_transport_and_path_from_url(location, **kwargs)
     except ValueError:

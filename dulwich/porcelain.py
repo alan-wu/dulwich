@@ -229,6 +229,7 @@ def clone(source, target=None, bare=False, checkout=None, errstream=default_byte
     :param source: Path or URL for source repository
     :param target: Path to target repository (optional)
     :param bare: Whether or not to create a bare repository
+    :param checkout: checkout branch when done?
     :param errstream: Optional stream to write progress to
     :param outstream: Optional stream to write progress to (deprecated)
     :return: The new repository
@@ -259,10 +260,11 @@ def clone(source, target=None, bare=False, checkout=None, errstream=default_byte
         remote_refs = client.fetch(host_path, r,
             determine_wants=r.object_store.determine_wants_all,
             progress=errstream.write)
-        r[b"HEAD"] = remote_refs[b"HEAD"]
         if checkout:
-            errstream.write(b'Checking out HEAD\n')
-            r.reset_index()
+            if b"HEAD" in remote_refs:
+                errstream.write(b'Checking out HEAD\n')
+                r[b"HEAD"] = remote_refs[b"HEAD"]
+                r.reset_index()
     except:
         r.close()
         raise
@@ -288,6 +290,46 @@ def add(repo=".", paths=None):
                 for filename in filenames:
                     paths.append(os.path.join(dirpath[len(r.path)+1:], filename))
         r.stage(paths)
+
+
+def remote_add(repo, name, url):
+    from dulwich.repo import Repo
+
+    r = Repo(repo)
+    config = r.get_config()
+
+    # Add new entries for remote
+    config.set((b'remote', name), b'url', url)  #.encode('utf8'))
+    config.set(
+        (b'remote', name), b'fetch',
+        b"+refs/heads/*:refs/remotes/" + name + b"/*")
+
+    # Write to disk
+    config.write_to_path()
+
+
+def remote(repo='.', verbose=False, outstream=sys.stdout):
+    r = Repo(repo)
+    config = r.get_config()
+    for section in config.itersections() or []:
+        if section[0] == b'remote':
+            if verbose:
+                outstream.write(section[1] + b'\t' + config.get(section, b'url') + b'\t(fetch)')
+            else:  # pragma: no cover
+                outstream.write(section[1])
+
+
+def remote_rm(repo, name):
+    delete_section = None
+    r = Repo(repo)
+    config = r.get_config()
+    for section in config.itersections():
+        if section[0] == b'remote' and len(section) > 1 and section[1] == name:
+            delete_section = section
+
+    if delete_section is not None:
+        del config[delete_section]
+        config.write_to_path()
 
 
 def rm(repo=".", paths=None):
